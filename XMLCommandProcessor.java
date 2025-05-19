@@ -1,230 +1,126 @@
-import java.io.*;
 import java.util.*;
 
-class XMLCommandProcessor {
+public class XMLCommandProcessor {
     private XMLNode root;
     private XMLParser parser;
+    private Map<String, XMLNode> idMap = new HashMap<>();
 
     public XMLCommandProcessor() {
         this.parser = new XMLParser();
     }
 
     public void processCommand(String command) {
-        String[] parts = command.split(" ");
-        switch (parts[0]) {
-            case "open":
-                try {
+        try {
+            String[] parts = command.trim().split("\\s+");
+            switch (parts[0]) {
+                case "open":
                     root = parser.parseXML(parts[1]);
-                    System.out.println("Successfully opened " + parts[1]);
-                } catch (Exception e) {
-                    System.out.println("Error opening file: " + e.getMessage());
-                }
-                break;
-
-            case "print":
-                printXML(root, 0);
-                break;
-
-            case "select":
-                selectAttribute(parts[1], parts[2]);
-                break;
-
-            case "set":
-                setAttribute(parts[1], parts[2], parts[3]);
-                break;
-
-            case "children":
-                listChildren(parts[1]);
-                break;
-
-            case "child":
-                getChild(parts[1], Integer.parseInt(parts[2]));
-                break;
-
-            case "text":
-                getText(parts[1]);
-                break;
-
-            case "delete":
-                deleteAttribute(parts[1], parts[2]);
-                break;
-
-            case "newchild":
-                addNewChild(parts[1]);
-                break;
-
-            case "save":
-                try {
-                    saveToFile(parts[1]);
-                    System.out.println("Successfully saved " + parts[1]);
-                } catch (IOException e) {
-                    System.out.println("Error saving file: " + e.getMessage());
-                }
-                break;
-
-            case "exit":
-                System.out.println("Exiting...");
-                System.exit(0);
-                break;
-            case "close":
-                root = null;
-                System.out.println("Successfully closed file.");
-                break;
-
-            case "saveas":
-                try {
-                    saveToFile(parts[1]);
-                } catch (IOException e) {
-                    System.out.println("Error saving file: " + e.getMessage());
-                }
-                break;
-
-            case "help":
-                System.out.println("The following commands are supported:");
-                System.out.println("open <file>       - opens <file>");
-                System.out.println("close             - closes currently opened file");
-                System.out.println("save              - saves the currently open file");
-                System.out.println("saveas <file>     - saves the currently open file in <file>");
-                System.out.println("help              - prints this information");
-                System.out.println("exit              - exits the program");
-                System.out.println("print             - prints the XML tree");
-                System.out.println("select <id> <key> - prints value of attribute");
-                System.out.println("set <id> <key> <value> - sets an attribute");
-                System.out.println("delete <id> <key> - deletes an attribute");
-                System.out.println("text <id>         - prints text content of node");
-                System.out.println("children <id>     - lists children of node");
-                System.out.println("child <id> <index> - shows child at index");
-                System.out.println("newchild <id>     - adds new empty child");
-                break;
-
-            default:
-                System.out.println("Invalid command.");
+                    indexIds(root);
+                    System.out.println("File loaded.");
+                    break;
+                case "print":
+                    printXML(root, 0);
+                    break;
+                case "select":
+                    System.out.println(getNode(parts[1]).getAttribute(parts[2]));
+                    break;
+                case "set":
+                    getNode(parts[1]).setAttribute(parts[2], parts[3]);
+                    break;
+                case "children":
+                    for (XMLNode child : getNode(parts[1]).getChildren()) {
+                        System.out.println(child.getId());
+                    }
+                    break;
+                case "child":
+                    System.out.println(getNode(parts[1]).getChildren().get(Integer.parseInt(parts[2])).getId());
+                    break;
+                case "text":
+                    System.out.println(getNode(parts[1]).getText());
+                    break;
+                case "delete":
+                    getNode(parts[1]).deleteAttribute(parts[2]);
+                    break;
+                case "newchild":
+                    XMLNode parent = getNode(parts[1]);
+                    XMLNode newChild = new XMLNode("newchild");
+                    String newId = "gen" + System.currentTimeMillis();
+                    newChild.setId(newId);
+                    parent.addChild(newChild);
+                    idMap.put(newId, newChild);
+                    System.out.println("New child added with ID: " + newId);
+                    break;
+                case "xpath":
+                    handleXPath(parts[1], parts[2]);
+                    break;
+                default:
+                    System.out.println("Unknown command.");
+            }
+        } catch (Exception e) {
+            System.out.println("Command error: " + e.getMessage());
         }
+    }
+
+    private void handleXPath(String id, String query) {
+        XMLNode node = getNode(id);
+        if (query.contains("/")) {
+            String[] steps = query.split("/");
+            List<XMLNode> current = List.of(node);
+            for (String step : steps) {
+                if (step.isEmpty()) continue;
+                List<XMLNode> next = new ArrayList<>();
+                for (XMLNode n : current) {
+                    for (XMLNode c : n.getChildren()) {
+                        if (c.getName().equals(step)) {
+                            next.add(c);
+                        }
+                    }
+                }
+                current = next;
+            }
+            for (XMLNode result : current) {
+                System.out.println(result.getId());
+            }
+        } else if (query.startsWith("@")) {
+            System.out.println(node.getAttribute(query.substring(1)));
+        } else {
+            System.out.println("Unsupported XPath format.");
+        }
+    }
+
+    private void indexIds(XMLNode node) {
+        if (node != null) {
+            idMap.put(node.getId(), node);
+            for (XMLNode child : node.getChildren()) {
+                indexIds(child);
+            }
+        }
+    }
+
+    private XMLNode getNode(String id) {
+        if (!idMap.containsKey(id)) throw new IllegalArgumentException("No element with ID: " + id);
+        return idMap.get(id);
     }
 
     private void printXML(XMLNode node, int indent) {
-        if (node == null)
+        String pad = "  ".repeat(indent);
+        System.out.print(pad + "<" + node.getName());
+        for (var attr : node.getAttributes().entrySet()) {
+            System.out.print(" " + attr.getKey() + "=\"" + attr.getValue() + "\"");
+        }
+        if (node.getChildren().isEmpty() && node.getText().isEmpty()) {
+            System.out.println("/>");
             return;
-        System.out.println(" ".repeat(indent) + "<" + node.getTagName() + ">");
+        }
+        System.out.print(">");
+        if (!node.getText().isEmpty()) {
+            System.out.print(node.getText());
+        }
+        System.out.println();
         for (XMLNode child : node.getChildren()) {
-            printXML(child, indent + 2);
+            printXML(child, indent + 1);
         }
-        System.out.println(" ".repeat(indent) + "</" + node.getTagName() + ">");
-    }
-
-    private void selectAttribute(String id, String key) {
-        XMLNode node = findNode(root, id);
-        if (node != null && node.getAttributes().containsKey(key)) {
-            System.out.println(node.getAttributes().get(key));
-        } else {
-            System.out.println("Attribute not found.");
-        }
-    }
-
-    private void setAttribute(String id, String key, String value) {
-        XMLNode node = findNode(root, id);
-        if (node != null) {
-            node.setAttribute(key, value);
-            System.out.println("Attribute set.");
-        } else {
-            System.out.println("Node not found.");
-        }
-    }
-
-    private void listChildren(String id) {
-        XMLNode node = findNode(root, id);
-        if (node != null) {
-            for (XMLNode child : node.getChildren()) {
-                System.out.println(child.getTagName() + " (id: " + child.getId() + ")");
-            }
-        } else {
-            System.out.println("Node not found.");
-        }
-    }
-
-    private void getChild(String id, int index) {
-        XMLNode node = findNode(root, id);
-        if (node != null && index < node.getChildren().size()) {
-            System.out.println("Child: " + node.getChildren().get(index).getTagName());
-        } else {
-            System.out.println("Child not found.");
-        }
-    }
-
-    private void getText(String id) {
-        XMLNode node = findNode(root, id);
-        if (node != null) {
-            System.out.println("Text: " + node.getTextContent());
-        } else {
-            System.out.println("Node not found.");
-        }
-    }
-
-    private void deleteAttribute(String id, String key) {
-        XMLNode node = findNode(root, id);
-        if (node != null) {
-            node.removeAttribute(key);
-            System.out.println("Attribute deleted.");
-        } else {
-            System.out.println("Node not found.");
-        }
-    }
-
-    private void addNewChild(String id) {
-        XMLNode node = findNode(root, id);
-        if (node != null) {
-            XMLNode newChild = new XMLNode("newChild", UUID.randomUUID().toString());
-            node.addChild(newChild);
-            System.out.println("New child added.");
-        } else {
-            System.out.println("Node not found.");
-        }
-    }
-
-    private XMLNode findNode(XMLNode node, String id) {
-        if (node == null)
-            return null;
-        if (node.getId().equals(id))
-            return node;
-        for (XMLNode child : node.getChildren()) {
-            XMLNode found = findNode(child, id);
-            if (found != null)
-                return found;
-        }
-        return null;
-    }
-
-    private void saveToFile(String filePath) throws IOException {
-        BufferedWriter writer = new BufferedWriter(new FileWriter(filePath));
-        saveXML(root, writer, 0);
-        writer.close();
-        System.out.println("File saved successfully.");
-    }
-
-    private void saveXML(XMLNode node, BufferedWriter writer, int indent) throws IOException {
-        if (node == null)
-            return;
-
-        String indentStr = " ".repeat(indent);
-        StringBuilder tag = new StringBuilder(indentStr + "<" + node.getTagName());
-
-        for (Map.Entry<String, String> attr : node.getAttributes().entrySet()) {
-            tag.append(" ").append(attr.getKey()).append("=\"").append(attr.getValue()).append("\"");
-        }
-
-        tag.append(">");
-
-        if (!node.getTextContent().isEmpty()) {
-            tag.append(node.getTextContent());
-        }
-
-        writer.write(tag.toString());
-        writer.newLine();
-
-        for (XMLNode child : node.getChildren()) {
-            saveXML(child, writer, indent + 2);
-        }
-
-        writer.write(indentStr + "</" + node.getTagName() + ">\n");
+        System.out.println(pad + "</" + node.getName() + ">");
     }
 }
+

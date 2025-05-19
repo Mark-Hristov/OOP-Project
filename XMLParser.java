@@ -2,61 +2,69 @@ import java.io.*;
 import java.util.*;
 import java.util.regex.*;
 
-class XMLParser {
-    private XMLNode root;
+public class XMLParser {
+    private Set<String> usedIds = new HashSet<>();
+    private int generatedId = 1;
 
     public XMLNode parseXML(String filePath) throws IOException {
-    BufferedReader reader = new BufferedReader(new FileReader(filePath));
-    Stack<XMLNode> stack = new Stack<>();
-    Pattern openTag = Pattern.compile("<(\\w+)([^>]*)>");
-    Pattern closeTag = Pattern.compile("</(\\w+)>");
-    Pattern fullTagWithText = Pattern.compile("<(\\w+)([^>]*)>([^<]+)</\\1>");
-    Pattern attrPattern = Pattern.compile("(\\w+)=\"(.*?)\"");
+        BufferedReader reader = new BufferedReader(new FileReader(filePath));
+        Stack<XMLNode> stack = new Stack<>();
+        XMLNode root = null;
+        String line;
 
-    String line;
-    while ((line = reader.readLine()) != null) {
-        line = line.trim();
+        Pattern openTagPattern = Pattern.compile("<(\\w+)([^>]*)>");
+        Pattern attrPattern = Pattern.compile("(\\w+)=\"([^\"]+)\"");
+        Pattern closeTagPattern = Pattern.compile("</(\\w+)>");
+        Pattern textPattern = Pattern.compile(">([^<>]+)<");
 
-        Matcher fullMatcher = fullTagWithText.matcher(line);
-        Matcher openMatcher = openTag.matcher(line);
-        Matcher closeMatcher = closeTag.matcher(line);
+        while ((line = reader.readLine()) != null) {
+            line = line.trim();
+            if (line.isEmpty()) continue;
 
-        if (fullMatcher.matches()) {
-            String tag = fullMatcher.group(1);
-            String attrPart = fullMatcher.group(2);
-            String text = fullMatcher.group(3).trim();
+            if (line.startsWith("</")) {
+                stack.pop();
+            } else if (line.startsWith("<")) {
+                Matcher openTag = openTagPattern.matcher(line);
+                if (openTag.find()) {
+                    String tag = openTag.group(1);
+                    String attrString = openTag.group(2);
+                    XMLNode node = new XMLNode(tag);
 
-            XMLNode node = new XMLNode(tag, UUID.randomUUID().toString());
-            node.setTextContent(text);
+                    Matcher attrMatcher = attrPattern.matcher(attrString);
+                    String id = null;
+                    while (attrMatcher.find()) {
+                        String key = attrMatcher.group(1);
+                        String value = attrMatcher.group(2);
+                        if (key.equals("id")) id = value;
+                        node.setAttribute(key, value);
+                    }
 
-            Matcher attrMatcher = attrPattern.matcher(attrPart);
-            while (attrMatcher.find()) {
-                node.setAttribute(attrMatcher.group(1), attrMatcher.group(2));
+                    // Unique ID logic
+                    if (id == null || usedIds.contains(id)) {
+                        while (usedIds.contains("gen" + generatedId)) generatedId++;
+                        id = (id != null) ? id + "_" + generatedId : "gen" + generatedId++;
+                    }
+                    node.setId(id);
+                    usedIds.add(id);
+
+                    if (!stack.isEmpty()) {
+                        stack.peek().addChild(node);
+                    } else {
+                        root = node;
+                    }
+
+                    stack.push(node);
+
+                    
+                    Matcher textMatcher = textPattern.matcher(line);
+                    if (textMatcher.find()) {
+                        node.setText(textMatcher.group(1));
+                    }
+                }
             }
-
-            if (!stack.isEmpty()) stack.peek().addChild(node);
-            else root = node;
-        } else if (openMatcher.matches()) {
-            String tag = openMatcher.group(1);
-            String attrPart = openMatcher.group(2);
-
-            XMLNode node = new XMLNode(tag, UUID.randomUUID().toString());
-
-            Matcher attrMatcher = attrPattern.matcher(attrPart);
-            while (attrMatcher.find()) {
-                node.setAttribute(attrMatcher.group(1), attrMatcher.group(2));
-            }
-
-            if (!stack.isEmpty()) stack.peek().addChild(node);
-            stack.push(node);
-            if (root == null) root = node;
-        } else if (closeMatcher.matches() && !stack.isEmpty()) {
-            stack.pop();
-        } else if (!stack.isEmpty()) {
-            stack.peek().setTextContent(line);
         }
+        reader.close();
+        return root;
     }
-    reader.close();
-    return root;
 }
-}
+

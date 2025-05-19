@@ -1,0 +1,8 @@
+<people>
+  <person id="1" name="John">
+    <address>USA</address>
+  </person>
+  <person id="1" name="Ivan">
+    <address>Bulgaria</address>
+  </person>
+</people>
