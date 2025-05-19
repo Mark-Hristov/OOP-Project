@@ -6,36 +6,57 @@ class XMLParser {
     private XMLNode root;
 
     public XMLNode parseXML(String filePath) throws IOException {
-        BufferedReader reader = new BufferedReader(new FileReader(filePath));
-        Stack<XMLNode> stack = new Stack<>();
-        Pattern openTag = Pattern.compile("<(\\w+)(.?)>");
-        Pattern closeTag = Pattern.compile("</(\\w+)>");
-        Pattern attrPattern = Pattern.compile("(\\w+)=\"(.*?)\"");
+    BufferedReader reader = new BufferedReader(new FileReader(filePath));
+    Stack<XMLNode> stack = new Stack<>();
+    Pattern openTag = Pattern.compile("<(\\w+)([^>]*)>");
+    Pattern closeTag = Pattern.compile("</(\\w+)>");
+    Pattern fullTagWithText = Pattern.compile("<(\\w+)([^>]*)>([^<]+)</\\1>");
+    Pattern attrPattern = Pattern.compile("(\\w+)=\"(.*?)\"");
 
-        String line;
-        while ((line = reader.readLine()) != null) {
-            line = line.trim();
-            Matcher openMatcher = openTag.matcher(line);
-            Matcher closeMatcher = closeTag.matcher(line);
+    String line;
+    while ((line = reader.readLine()) != null) {
+        line = line.trim();
 
-            if (openMatcher.find()) {
-                String tagName = openMatcher.group(1);
-                XMLNode node = new XMLNode(tagName, UUID.randomUUID().toString());
+        Matcher fullMatcher = fullTagWithText.matcher(line);
+        Matcher openMatcher = openTag.matcher(line);
+        Matcher closeMatcher = closeTag.matcher(line);
 
-                Matcher attrMatcher = attrPattern.matcher(openMatcher.group(2));
-                while (attrMatcher.find()) {
-                    node.setAttribute(attrMatcher.group(1), attrMatcher.group(2));
-                }
+        if (fullMatcher.matches()) {
+            String tag = fullMatcher.group(1);
+            String attrPart = fullMatcher.group(2);
+            String text = fullMatcher.group(3).trim();
 
-                if (!stack.isEmpty()) stack.peek().addChild(node);
-                stack.push(node);
+            XMLNode node = new XMLNode(tag, UUID.randomUUID().toString());
+            node.setTextContent(text);
 
-                if (root == null) root = node;
-            } else if (closeMatcher.find() && !stack.isEmpty()) {
-                stack.pop();
+            Matcher attrMatcher = attrPattern.matcher(attrPart);
+            while (attrMatcher.find()) {
+                node.setAttribute(attrMatcher.group(1), attrMatcher.group(2));
             }
+
+            if (!stack.isEmpty()) stack.peek().addChild(node);
+            else root = node;
+        } else if (openMatcher.matches()) {
+            String tag = openMatcher.group(1);
+            String attrPart = openMatcher.group(2);
+
+            XMLNode node = new XMLNode(tag, UUID.randomUUID().toString());
+
+            Matcher attrMatcher = attrPattern.matcher(attrPart);
+            while (attrMatcher.find()) {
+                node.setAttribute(attrMatcher.group(1), attrMatcher.group(2));
+            }
+
+            if (!stack.isEmpty()) stack.peek().addChild(node);
+            stack.push(node);
+            if (root == null) root = node;
+        } else if (closeMatcher.matches() && !stack.isEmpty()) {
+            stack.pop();
+        } else if (!stack.isEmpty()) {
+            stack.peek().setTextContent(line);
         }
-        reader.close();
-        return root;
     }
+    reader.close();
+    return root;
+}
 }
